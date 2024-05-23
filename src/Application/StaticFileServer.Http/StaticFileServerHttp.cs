@@ -69,7 +69,15 @@ public class StaticFileServerHttp
         {
             HttpListenerContext ctx = await _listener.GetContextAsync();
 
+            Thread thread = new
+            (
+                async () =>
+                {
             await ProcessRequestAsync(ctx);
+        }
+            );
+
+            thread.Start();
         }
 
         _listener.Close();
