@@ -124,7 +124,7 @@ public class StaticFileServerHttp
         {
             Console.WriteLine($"Page not found! Searched path: {path}");
 
-            using var fileStream = new FileStream(Path.Combine(_hostDir, _notFoundResponseResource), FileMode.Open);
+            using var fileStream = new FileStream(Path.Combine(_hostDir, _notFoundResponseResource), FileMode.Open, FileAccess.Read, FileShare.Read);
             await StreamHelper.WriteIntoOutputStreamAsync(ctx.Response.OutputStream, fileStream);
 
             SetResponseInfo(ctx, new HttpResponseInfo(HttpStatusCode.NotFound, 0));
@@ -154,7 +154,7 @@ public class StaticFileServerHttp
 
     private async Task SendOkResponseAsync(HttpListenerContext ctx, string path)
     {
-        using var fileStream = new FileStream(path, FileMode.Open);
+        using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         await StreamHelper.WriteIntoOutputStreamAsync(ctx.Response.OutputStream, fileStream);
 
         Console.WriteLine($"Ok request! Searched path: {path}");
