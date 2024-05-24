@@ -17,6 +17,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{EC9D9933-E3C
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{08C2656A-CB11-49E0-9C69-DA84EE20B319}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "StressTests", "tests\StressTests", "{6050EC88-3BC5-4CDE-B278-921265B87DF7}"
+	ProjectSection(SolutionItems) = preProject
+		tests\StressTests\K6StressTests.js = tests\StressTests\K6StressTests.js
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -41,6 +46,7 @@ Global
 		{F656551D-5651-4B4F-BB34-24C01D2712CD} = {EC9D9933-E3C6-4458-AB94-F8B327CD3151}
 		{B9A05F35-F816-4CFE-AD14-48D10C85F59F} = {F656551D-5651-4B4F-BB34-24C01D2712CD}
 		{AE2ED0F9-AB18-4C9B-9A2B-84648E920D84} = {EC9D9933-E3C6-4458-AB94-F8B327CD3151}
+		{6050EC88-3BC5-4CDE-B278-921265B87DF7} = {08C2656A-CB11-49E0-9C69-DA84EE20B319}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {ADD79652-3A69-4196-9E01-D3E8E140E2F7}
