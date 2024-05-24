@@ -15,7 +15,7 @@ public static class StreamHelper
             int readedBytes = await inputStream.ReadAsync(buffer, startWriteIntoBufferFromIndex, maxBufferByteSize);
 
             int startReadIntoBufferFromIndex = 0;
-            outputStream.Write(buffer, startReadIntoBufferFromIndex, readedBytes);
+            await outputStream.WriteAsync(buffer, startReadIntoBufferFromIndex, readedBytes);
             totalReadedBytes += readedBytes;
         }
     }
