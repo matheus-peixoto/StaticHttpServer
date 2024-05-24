@@ -138,14 +138,18 @@ public class StaticFileServerHttp
         {
             await SendOkResponseAsync(ctx, path);
         }
-        catch (HttpListenerException)
+        catch (HttpListenerException ex)
         {
+            await Console.Out.WriteLineAsync($"Receive an {ex.GetType()} exception: {ex.Message}");
+
             SetResponseInfo(ctx, new HttpResponseInfo(HttpStatusCode.InternalServerError, 0));
 
             ctx.Response.Close();
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            await Console.Out.WriteLineAsync($"Receive an {ex.GetType()} exception: {ex.Message}");
+
             SetResponseInfo(ctx, new HttpResponseInfo(HttpStatusCode.BadRequest, 0));
 
             ctx.Response.Close();
