@@ -36,5 +36,5 @@ for (int i = 0; i < args.Length; i++)
 StaticFileServerHttp server = builder.Build();
 var result = await server.RunAsync();
 
-Console.WriteLine($"Ended with code {result}, press any key to contiune");
+Console.WriteLine($"\nEnded with code {result}, press any key to continue");
 Console.ReadKey();
