@@ -7,8 +7,9 @@ namespace StaticFileServer.Http;
 
 public class StaticFileServerHttp
 {
-    private const int ThreadPoolSize = 20;
+    private const int ThreadPoolSize = 100;
 
+    private readonly Mutex mutex;
     private readonly HttpListener _listener;
 
     private readonly string _hostUrl = string.Empty;
@@ -21,6 +22,7 @@ public class StaticFileServerHttp
 
     private readonly Queue<HttpListenerContext> _contextQueue;
 
+    private long _isMutexOnLock;
     private long _running;
 
     public StaticFileServerHttp(string hostUrl)
@@ -38,6 +40,7 @@ public class StaticFileServerHttp
 
         Directory.CreateDirectory(_hostDir);
 
+        mutex = new();
         _threadPool = new Thread[ThreadPoolSize];
         _contextQueue = new();
         _listener = new();
@@ -64,36 +67,17 @@ public class StaticFileServerHttp
             _hostDir = hostDir.EndsWith('/') ? hostDir : hostDir + "/";
         }
 
+        mutex = new();
         _threadPool = new Thread[ThreadPoolSize];
         _contextQueue = new();
         _listener = new();
-    }
-
-    public async Task ListenOnQueueAsync()
-    {
-        Guid executionContext = Guid.NewGuid();
-        while (Interlocked.Read(ref _running) == 1)
-        {
-            if (_contextQueue.Count == 0)
-            {
-                continue;
-            };
-
-            var ctx = _contextQueue.Dequeue();
-
-            await Console.Out.WriteLineAsync($"{Thread.CurrentThread.Name} will proccess request of context {executionContext}");
-            await ProcessRequestAsync(ctx);
-            await Console.Out.WriteLineAsync($"{Thread.CurrentThread.Name} proccessed request of context {executionContext}");
-        }
-
-        await Console.Out.WriteLineAsync($"{Thread.CurrentThread.Name} has concluded");
     }
 
     public void StartThreads()
     {
         for (int i = 0; i < ThreadPoolSize; i++)
         {
-            _threadPool[i] = new Thread(async () => await ListenOnQueueAsync());
+            _threadPool[i] = new Thread(ListenOnQueue);
 
             var thread = _threadPool[i];
             thread.Name = $"Thread{i + 1}";
@@ -101,7 +85,33 @@ public class StaticFileServerHttp
         }
     }
 
-    public async Task<int> RunAsync()
+    public void ListenOnQueue()
+    {
+        Guid executionContext = Guid.NewGuid();
+        while (Interlocked.Read(ref _running) == 1)
+        {
+            MutexRequest();
+
+            if (_contextQueue.Count == 0)
+            {
+                MutexRelease();
+
+                continue;
+            };
+
+            var ctx = _contextQueue.Dequeue();
+
+            MutexRelease();
+
+            Console.WriteLine($"{Thread.CurrentThread.Name} will proccess request of context {executionContext}");
+            ProcessRequest(ctx);
+            Console.WriteLine($"{Thread.CurrentThread.Name} proccessed request of context {executionContext}");
+        }
+
+        Console.WriteLine($"{Thread.CurrentThread.Name} has concluded");
+    }
+
+    public int Run()
     {
         Guid executionId = Guid.NewGuid();
 
@@ -116,23 +126,31 @@ public class StaticFileServerHttp
 
         while (Interlocked.Read(ref _running) == 1)
         {
-            await ListenForNewRequestAsync(_listener, executionId);
+            ListenForNewRequest(_listener, executionId);
         }
 
         _listener.Close();
+        mutex.Dispose();
 
         return 0;
     }
 
-    private async Task ListenForNewRequestAsync(HttpListener listener, Guid executionId)
+    private void ListenForNewRequest(HttpListener listener, Guid executionId)
     {
         try
         {
-            HttpListenerContext ctx = await listener.GetContextAsync();
+            HttpListenerContext ctx = listener.GetContext();
+
+            LogMutexRequest(executionId);
+            MutexRequest();
 
             Console.WriteLine($"New request: {ctx.Request.HttpMethod} {ctx.Request.Url}");
 
             _contextQueue.Enqueue(ctx);
+
+            MutexRelease();
+
+            LogMutexRelease(executionId);
         }
         catch (HttpListenerException ex)
         {
@@ -143,9 +161,40 @@ public class StaticFileServerHttp
                 throw;
             }
         }
+        catch (Exception)
+        {
+            if (Interlocked.Read(ref _isMutexOnLock) == 1)
+            {
+                MutexRelease();
+            }
+
+            throw;
+        }
     }
 
-    private async Task ProcessRequestAsync(HttpListenerContext ctx)
+    private void MutexRequest()
+    {
+        mutex.WaitOne();
+        _isMutexOnLock = Interlocked.Exchange(ref _isMutexOnLock, 1);
+    }
+
+    private void MutexRelease()
+    {
+        mutex.ReleaseMutex();
+        _isMutexOnLock = Interlocked.Exchange(ref _isMutexOnLock, 0);
+    }
+
+    private void LogMutexRequest(Guid id)
+    {
+        Console.WriteLine($"{Thread.CurrentThread.Name} is requesting mutex - Execution Context: {id}");
+    }
+
+    private void LogMutexRelease(Guid id)
+    {
+        Console.WriteLine($"{Thread.CurrentThread.Name} released mutex - Execution Context: {id}");
+    }
+
+    private void ProcessRequest(HttpListenerContext ctx)
     {
         if (ctx?.Request?.Url is null)
         {
@@ -154,28 +203,25 @@ public class StaticFileServerHttp
 
         if (ctx.Request.Url!.AbsolutePath.ToLower().Equals("/shutdown"))
         {
-            await HandleShutdownAynsc(ctx);
+            HandleShutdown(ctx);
 
             return;
         }
 
-        await HandleFileResponseAsync(ctx);
+        HandleFileResponse(ctx);
     }
 
-    private async Task HandleShutdownAynsc(HttpListenerContext ctx)
+    private void HandleShutdown(HttpListenerContext ctx)
     {
-        await Task.Run(() =>
-        {
-            Interlocked.Exchange(ref _running, 0);
-            SetResponseInfo(ctx, new HttpResponseInfo(HttpStatusCode.NoContent, 0));
+        Interlocked.Exchange(ref _running, 0);
+        SetResponseInfo(ctx, new HttpResponseInfo(HttpStatusCode.NoContent, 0));
 
-            ctx.Response.Close();
+        ctx.Response.Close();
 
-            _listener.Stop();
-        });
+        _listener.Stop();
     }
 
-    private async Task HandleFileResponseAsync(HttpListenerContext ctx)
+    private void HandleFileResponse(HttpListenerContext ctx)
     {
         var requestedResource = ctx.Request.Url!.AbsolutePath.ToString().TrimStart('/');
         string path = Path.Combine(_hostDir, (string.IsNullOrWhiteSpace(requestedResource) ? "index.html" : requestedResource));
@@ -185,7 +231,7 @@ public class StaticFileServerHttp
             Console.WriteLine($"Page not found! Searched path: {path}");
 
             using var fileStream = new FileStream(Path.Combine(_hostDir, _notFoundResponseResource), FileMode.Open, FileAccess.Read, FileShare.Read);
-            await StreamHelper.WriteIntoOutputStreamAsync(ctx.Response.OutputStream, fileStream);
+            StreamHelper.WriteIntoOutputStream(ctx.Response.OutputStream, fileStream);
 
             SetResponseInfo(ctx, new HttpResponseInfo(HttpStatusCode.NotFound, 0));
 
@@ -196,11 +242,11 @@ public class StaticFileServerHttp
 
         try
         {
-            await SendOkResponseAsync(ctx, path);
+            SendOkResponse(ctx, path);
         }
         catch (HttpListenerException ex)
         {
-            await Console.Out.WriteLineAsync($"Receive an {ex.GetType()} exception: {ex.Message}");
+            Console.WriteLine($"Receive an {ex.GetType()} exception: {ex.Message}");
 
             SetResponseInfo(ctx, new HttpResponseInfo(HttpStatusCode.InternalServerError, 0));
 
@@ -208,7 +254,7 @@ public class StaticFileServerHttp
         }
         catch (Exception ex)
         {
-            await Console.Out.WriteLineAsync($"Receive an {ex.GetType()} exception: {ex.Message}");
+            Console.WriteLine($"Receive an {ex.GetType()} exception: {ex.Message}");
 
             SetResponseInfo(ctx, new HttpResponseInfo(HttpStatusCode.BadRequest, 0));
 
@@ -216,10 +262,10 @@ public class StaticFileServerHttp
         }
     }
 
-    private async Task SendOkResponseAsync(HttpListenerContext ctx, string path)
+    private void SendOkResponse(HttpListenerContext ctx, string path)
     {
         using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        await StreamHelper.WriteIntoOutputStreamAsync(ctx.Response.OutputStream, fileStream);
+        StreamHelper.WriteIntoOutputStream(ctx.Response.OutputStream, fileStream);
 
         Console.WriteLine($"Ok request! Searched path: {path}");
 

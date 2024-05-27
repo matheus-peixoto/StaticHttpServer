@@ -2,9 +2,10 @@
 
 public static class StreamHelper
 {
-    public static async Task WriteIntoOutputStreamAsync(Stream outputStream, Stream inputStream)
+    public static void WriteIntoOutputStream(Stream outputStream, Stream inputStream)
     {
-        const int maxBufferByteSize = 1000;
+        //10 MiB max buffer size
+        const int maxBufferByteSize = 1024 * 1024 * 10;
         byte[] buffer = new byte[maxBufferByteSize];
 
         int bytesToRead = (int)inputStream.Length;
@@ -12,10 +13,10 @@ public static class StreamHelper
         while (bytesToRead > totalReadedBytes)
         {
             int startWriteIntoBufferFromIndex = 0;
-            int readedBytes = await inputStream.ReadAsync(buffer, startWriteIntoBufferFromIndex, maxBufferByteSize);
+            int readedBytes = inputStream.Read(buffer, startWriteIntoBufferFromIndex, maxBufferByteSize);
 
             int startReadIntoBufferFromIndex = 0;
-            await outputStream.WriteAsync(buffer, startReadIntoBufferFromIndex, readedBytes);
+            outputStream.Write(buffer, startReadIntoBufferFromIndex, readedBytes);
             totalReadedBytes += readedBytes;
         }
     }
