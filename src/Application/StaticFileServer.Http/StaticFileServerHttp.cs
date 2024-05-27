@@ -10,6 +10,7 @@ public class StaticFileServerHttp
     private const int ThreadPoolSize = 100;
 
     private readonly AutoResetEvent _queueNotifier;
+    private readonly Mutex _mutex;
     private readonly HttpListener _listener;
 
     private readonly string _hostUrl = string.Empty;
@@ -41,6 +42,7 @@ public class StaticFileServerHttp
         Directory.CreateDirectory(_hostDir);
 
         _queueNotifier = new AutoResetEvent(false);
+        _mutex = new();
         _threadPool = new Thread[ThreadPoolSize];
         _contextQueue = new();
         _listener = new();
@@ -68,12 +70,13 @@ public class StaticFileServerHttp
         }
 
         _queueNotifier = new AutoResetEvent(false);
+        _mutex = new();
         _threadPool = new Thread[ThreadPoolSize];
         _contextQueue = new();
         _listener = new();
     }
 
-    public void StartThreads()
+    private void StartThreads()
     {
         for (int i = 0; i < ThreadPoolSize; i++)
         {
@@ -182,28 +185,6 @@ public class StaticFileServerHttp
         }
     }
 
-    private void MutexRequest()
-    {
-        mutex.WaitOne();
-        _isMutexOnLock = Interlocked.Exchange(ref _isMutexOnLock, 1);
-    }
-
-    private void MutexRelease()
-    {
-        mutex.ReleaseMutex();
-        _isMutexOnLock = Interlocked.Exchange(ref _isMutexOnLock, 0);
-    }
-
-    private void LogMutexRequest(Guid id)
-    {
-        Console.WriteLine($"{Thread.CurrentThread.Name} is requesting mutex - Execution Context: {id}");
-    }
-
-    private void LogMutexRelease(Guid id)
-    {
-        Console.WriteLine($"{Thread.CurrentThread.Name} released mutex - Execution Context: {id}");
-    }
-
     private void ProcessRequest(HttpListenerContext ctx)
     {
         if (ctx?.Request?.Url is null)
@@ -307,4 +288,27 @@ public class StaticFileServerHttp
 
         Console.WriteLine($"Responding: {ctx.Response.StatusCode}, {ctx.Response.ContentType}, {ctx.Response.ContentLength64}");
     }
+
+    private void MutexRequest()
+    {
+        _mutex.WaitOne();
+        _isMutexOnLock = Interlocked.Exchange(ref _isMutexOnLock, 1);
+    }
+
+    private void MutexRelease()
+    {
+        _mutex.ReleaseMutex();
+        _isMutexOnLock = Interlocked.Exchange(ref _isMutexOnLock, 0);
+    }
+
+    private void LogMutexRequest(Guid id)
+    {
+        Console.WriteLine($"{Thread.CurrentThread.Name} is requesting mutex - Execution Context: {id}");
+    }
+
+    private void LogMutexRelease(Guid id)
+    {
+        Console.WriteLine($"{Thread.CurrentThread.Name} released mutex - Execution Context: {id}");
+    }
+
 }
