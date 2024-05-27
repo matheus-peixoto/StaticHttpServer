@@ -9,7 +9,7 @@ public class StaticFileServerHttp
 {
     private const int ThreadPoolSize = 100;
 
-    private readonly Mutex mutex;
+    private readonly AutoResetEvent _queueNotifier;
     private readonly HttpListener _listener;
 
     private readonly string _hostUrl = string.Empty;
@@ -40,7 +40,7 @@ public class StaticFileServerHttp
 
         Directory.CreateDirectory(_hostDir);
 
-        mutex = new();
+        _queueNotifier = new AutoResetEvent(false);
         _threadPool = new Thread[ThreadPoolSize];
         _contextQueue = new();
         _listener = new();
@@ -67,7 +67,7 @@ public class StaticFileServerHttp
             _hostDir = hostDir.EndsWith('/') ? hostDir : hostDir + "/";
         }
 
-        mutex = new();
+        _queueNotifier = new AutoResetEvent(false);
         _threadPool = new Thread[ThreadPoolSize];
         _contextQueue = new();
         _listener = new();
@@ -85,23 +85,30 @@ public class StaticFileServerHttp
         }
     }
 
-    public void ListenOnQueue()
+    private void ReleaseThreads()
+    {
+        for (int i = 0; i < ThreadPoolSize; i++)
+        {
+            _queueNotifier.Set();
+        }
+    }
+
+    private void ListenOnQueue()
     {
         Guid executionContext = Guid.NewGuid();
         while (Interlocked.Read(ref _running) == 1)
         {
+            _queueNotifier.WaitOne();
+
+            if (Interlocked.Read(ref _running) == 0) continue;
+
             MutexRequest();
-
-            if (_contextQueue.Count == 0)
-            {
-                MutexRelease();
-
-                continue;
-            };
 
             var ctx = _contextQueue.Dequeue();
 
             MutexRelease();
+
+            if (ctx == null) continue;
 
             Console.WriteLine($"{Thread.CurrentThread.Name} will proccess request of context {executionContext}");
             ProcessRequest(ctx);
@@ -130,7 +137,8 @@ public class StaticFileServerHttp
         }
 
         _listener.Close();
-        mutex.Dispose();
+        _mutex.Dispose();
+        _queueNotifier.Dispose();
 
         return 0;
     }
@@ -149,6 +157,8 @@ public class StaticFileServerHttp
             _contextQueue.Enqueue(ctx);
 
             MutexRelease();
+
+            _queueNotifier.Set();
 
             LogMutexRelease(executionId);
         }
@@ -214,11 +224,14 @@ public class StaticFileServerHttp
     private void HandleShutdown(HttpListenerContext ctx)
     {
         Interlocked.Exchange(ref _running, 0);
+
         SetResponseInfo(ctx, new HttpResponseInfo(HttpStatusCode.NoContent, 0));
 
         ctx.Response.Close();
 
         _listener.Stop();
+
+        ReleaseThreads();
     }
 
     private void HandleFileResponse(HttpListenerContext ctx)
