@@ -7,15 +7,21 @@ namespace StaticFileServer.Http;
 
 public class StaticFileServerHttp
 {
-    private HttpListener? _listener;
+    private const int ThreadPoolSize = 20;
 
-    private string _hostUrl = string.Empty;
-    private string _hostDir = string.Empty;
+    private readonly HttpListener _listener;
 
-    private string _notFoundResponseResource = "notFound.html";
-    private string _errorResponseResource = "error.html";
+    private readonly string _hostUrl = string.Empty;
+    private readonly string _hostDir = string.Empty;
 
-    private bool _running;
+    private readonly string _notFoundResponseResource = "notFound.html";
+    private readonly string _errorResponseResource = "error.html";
+
+    private readonly Thread[] _threadPool;
+
+    private readonly Queue<HttpListenerContext> _contextQueue;
+
+    private long _running;
 
     public StaticFileServerHttp(string hostUrl)
     {
@@ -31,6 +37,10 @@ public class StaticFileServerHttp
         _hostDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Personal), "StatisFileServer-1.0", "static");
 
         Directory.CreateDirectory(_hostDir);
+
+        _threadPool = new Thread[ThreadPoolSize];
+        _contextQueue = new();
+        _listener = new();
     }
 
     public StaticFileServerHttp(string hostUrl, string hostDir)
@@ -53,36 +63,86 @@ public class StaticFileServerHttp
         {
             _hostDir = hostDir.EndsWith('/') ? hostDir : hostDir + "/";
         }
+
+        _threadPool = new Thread[ThreadPoolSize];
+        _contextQueue = new();
+        _listener = new();
+    }
+
+    public async Task ListenOnQueueAsync()
+    {
+        Guid executionContext = Guid.NewGuid();
+        while (Interlocked.Read(ref _running) == 1)
+        {
+            if (_contextQueue.Count == 0)
+            {
+                continue;
+            };
+
+            var ctx = _contextQueue.Dequeue();
+
+            await Console.Out.WriteLineAsync($"{Thread.CurrentThread.Name} will proccess request of context {executionContext}");
+            await ProcessRequestAsync(ctx);
+            await Console.Out.WriteLineAsync($"{Thread.CurrentThread.Name} proccessed request of context {executionContext}");
+        }
+
+        await Console.Out.WriteLineAsync($"{Thread.CurrentThread.Name} has concluded");
+    }
+
+    public void StartThreads()
+    {
+        for (int i = 0; i < ThreadPoolSize; i++)
+        {
+            _threadPool[i] = new Thread(async () => await ListenOnQueueAsync());
+
+            var thread = _threadPool[i];
+            thread.Name = $"Thread{i + 1}";
+            thread.Start();
+        }
     }
 
     public async Task<int> RunAsync()
     {
-        _listener = new();
-        _listener.Prefixes.Add(_hostUrl);
-        _listener.Start();
+        Guid executionId = Guid.NewGuid();
+
+        _listener!.Prefixes.Add(_hostUrl);
+        _listener!.Start();
 
         Console.WriteLine($"Listenning on {_hostUrl}");
 
-        _running = true;
+        _running = 1;
 
-        while (_running)
+        StartThreads();
+
+        while (Interlocked.Read(ref _running) == 1)
         {
-            HttpListenerContext ctx = await _listener.GetContextAsync();
-
-            Thread thread = new
-            (
-                async () =>
-                {
-            await ProcessRequestAsync(ctx);
-        }
-            );
-
-            thread.Start();
+            await ListenForNewRequestAsync(_listener, executionId);
         }
 
         _listener.Close();
 
         return 0;
+    }
+
+    private async Task ListenForNewRequestAsync(HttpListener listener, Guid executionId)
+    {
+        try
+        {
+            HttpListenerContext ctx = await listener.GetContextAsync();
+
+            Console.WriteLine($"New request: {ctx.Request.HttpMethod} {ctx.Request.Url}");
+
+            _contextQueue.Enqueue(ctx);
+        }
+        catch (HttpListenerException ex)
+        {
+            const int stopListennerErrCode = 995;
+
+            if (ex.ErrorCode != stopListennerErrCode)
+            {
+                throw;
+            }
+        }
     }
 
     private async Task ProcessRequestAsync(HttpListenerContext ctx)
@@ -91,8 +151,6 @@ public class StaticFileServerHttp
         {
             throw new InvalidRequestContextException("The context or request or url cannot be null");
         }
-
-        Console.WriteLine($"New request: {ctx.Request.HttpMethod} {ctx.Request.Url}");
 
         if (ctx.Request.Url!.AbsolutePath.ToLower().Equals("/shutdown"))
         {
@@ -108,10 +166,12 @@ public class StaticFileServerHttp
     {
         await Task.Run(() =>
         {
-            _running = false;
+            Interlocked.Exchange(ref _running, 0);
             SetResponseInfo(ctx, new HttpResponseInfo(HttpStatusCode.NoContent, 0));
 
             ctx.Response.Close();
+
+            _listener.Stop();
         });
     }
 
