@@ -98,24 +98,24 @@ public class StaticFileServerHttp
 
     private void ListenOnQueue()
     {
-        Guid executionContext = Guid.NewGuid();
+        Guid executionContextId = Guid.NewGuid();
         while (Interlocked.Read(ref _running) == 1)
         {
             _queueNotifier.WaitOne();
 
             if (Interlocked.Read(ref _running) == 0) continue;
 
-            MutexRequest();
+            MutexRequest(executionContextId);
 
             var ctx = _contextQueue.Dequeue();
 
-            MutexRelease();
+            MutexRelease(executionContextId);
 
             if (ctx == null) continue;
 
-            Console.WriteLine($"{Thread.CurrentThread.Name} will proccess request of context {executionContext}");
+            Console.WriteLine($"{Thread.CurrentThread.Name} will proccess request of context {executionContextId}");
             ProcessRequest(ctx);
-            Console.WriteLine($"{Thread.CurrentThread.Name} proccessed request of context {executionContext}");
+            Console.WriteLine($"{Thread.CurrentThread.Name} proccessed request of context {executionContextId}");
         }
 
         Console.WriteLine($"{Thread.CurrentThread.Name} has concluded");
@@ -123,7 +123,7 @@ public class StaticFileServerHttp
 
     public int Run()
     {
-        Guid executionId = Guid.NewGuid();
+        Guid executionContextId = Guid.NewGuid();
 
         _listener!.Prefixes.Add(_hostUrl);
         _listener!.Start();
@@ -136,34 +136,29 @@ public class StaticFileServerHttp
 
         while (Interlocked.Read(ref _running) == 1)
         {
-            ListenForNewRequest(_listener, executionId);
+            ListenForNewRequest(_listener, executionContextId);
         }
 
-        _listener.Close();
-        _mutex.Dispose();
-        _queueNotifier.Dispose();
+        Dispose();
 
         return 0;
     }
 
-    private void ListenForNewRequest(HttpListener listener, Guid executionId)
+    private void ListenForNewRequest(HttpListener listener, Guid executionContextId)
     {
         try
         {
             HttpListenerContext ctx = listener.GetContext();
 
-            LogMutexRequest(executionId);
-            MutexRequest();
+            MutexRequest(executionContextId);
 
             Console.WriteLine($"New request: {ctx.Request.HttpMethod} {ctx.Request.Url}");
 
             _contextQueue.Enqueue(ctx);
 
-            MutexRelease();
+            MutexRelease(executionContextId);
 
             _queueNotifier.Set();
-
-            LogMutexRelease(executionId);
         }
         catch (HttpListenerException ex)
         {
@@ -178,7 +173,7 @@ public class StaticFileServerHttp
         {
             if (Interlocked.Read(ref _isMutexOnLock) == 1)
             {
-                MutexRelease();
+                MutexRelease(executionContextId);
             }
 
             throw;
@@ -289,26 +284,32 @@ public class StaticFileServerHttp
         Console.WriteLine($"Responding: {ctx.Response.StatusCode}, {ctx.Response.ContentType}, {ctx.Response.ContentLength64}");
     }
 
-    private void MutexRequest()
+    private void MutexRequest(Guid executionContextId)
     {
         _mutex.WaitOne();
         _isMutexOnLock = Interlocked.Exchange(ref _isMutexOnLock, 1);
+
+        LogMutexRequest(executionContextId);
     }
 
-    private void MutexRelease()
+    private void MutexRelease(Guid executionContextId)
     {
         _mutex.ReleaseMutex();
         _isMutexOnLock = Interlocked.Exchange(ref _isMutexOnLock, 0);
+
+        LogMutexRelease(executionContextId);
     }
 
-    private void LogMutexRequest(Guid id)
+    private void LogMutexRequest(Guid executionContextId) =>
+        Console.WriteLine($"{Thread.CurrentThread.Name} is requesting mutex - Execution Context: {executionContextId}");
+
+    private void LogMutexRelease(Guid executionContextId) =>
+        Console.WriteLine($"{Thread.CurrentThread.Name} released mutex - Execution Context: {executionContextId}");
+
+    private void Dispose()
     {
-        Console.WriteLine($"{Thread.CurrentThread.Name} is requesting mutex - Execution Context: {id}");
+        _listener.Close();
+        _mutex.Dispose();
+        _queueNotifier.Dispose();
     }
-
-    private void LogMutexRelease(Guid id)
-    {
-        Console.WriteLine($"{Thread.CurrentThread.Name} released mutex - Execution Context: {id}");
-    }
-
 }
