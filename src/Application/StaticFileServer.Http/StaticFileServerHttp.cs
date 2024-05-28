@@ -88,7 +88,7 @@ public class StaticFileServerHttp
         }
     }
 
-    private void ReleaseThreads()
+    private void SignalAllThreadsToContinue()
     {
         for (int i = 0; i < ThreadPoolSize; i++)
         {
@@ -207,7 +207,7 @@ public class StaticFileServerHttp
 
         _listener.Stop();
 
-        ReleaseThreads();
+        SignalAllThreadsToContinue();
     }
 
     private void HandleFileResponse(HttpListenerContext ctx)
