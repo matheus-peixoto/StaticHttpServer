@@ -103,7 +103,10 @@ public class StaticFileServerHttp
         {
             _queueNotifier.WaitOne();
 
-            if (Interlocked.Read(ref _running) == 0) continue;
+            if (Interlocked.Read(ref _running) == 0)
+            {
+                continue;
+            }
 
             MutexRequest(executionContextId);
 
@@ -111,7 +114,10 @@ public class StaticFileServerHttp
 
             MutexRelease(executionContextId);
 
-            if (ctx == null) continue;
+            if (ctx is null)
+            {
+                continue;
+            }
 
             Console.WriteLine($"{Thread.CurrentThread.Name} will proccess request of context {executionContextId}");
             ProcessRequest(ctx);
