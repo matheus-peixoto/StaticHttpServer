@@ -129,6 +129,8 @@ public class StaticFileServerHttp
 
     public int Run()
     {
+        Thread.CurrentThread.Name = "Main thread";
+
         Guid executionContextId = Guid.NewGuid();
 
         _listener!.Prefixes.Add(_hostUrl);
