@@ -23,10 +23,8 @@ public class StaticFileServerHttpBuilder
     {
         if (string.IsNullOrWhiteSpace(_hostUrl))
         {
-            //With the http://+:8080/ url I can send stuff as localhost, 127.0.0.1 and the local wi-fi network
+            //With the http://+:8080/ url I can send stuff as localhost and 127.0.0.1
             _hostUrl = "http://+:8080/";
-            //_hostUrl = "http://locahost:18082/";
-            //_hostUrl = "http://127.0.0.1:8081/";
         }
 
         if (string.IsNullOrWhiteSpace(_hostDir))
