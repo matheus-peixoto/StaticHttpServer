@@ -287,7 +287,8 @@ public class StaticFileServerHttp
     private void MutexRequest(Guid executionContextId)
     {
         _mutex.WaitOne();
-        _isMutexOnLock = Interlocked.Exchange(ref _isMutexOnLock, 1);
+
+        Interlocked.Exchange(ref _isMutexOnLock, 1);
 
         LogMutexRequest(executionContextId);
     }
@@ -295,7 +296,8 @@ public class StaticFileServerHttp
     private void MutexRelease(Guid executionContextId)
     {
         _mutex.ReleaseMutex();
-        _isMutexOnLock = Interlocked.Exchange(ref _isMutexOnLock, 0);
+
+        Interlocked.Exchange(ref _isMutexOnLock, 0);
 
         LogMutexRelease(executionContextId);
     }
