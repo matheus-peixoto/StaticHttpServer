@@ -164,8 +164,6 @@ public class StaticFileServerHttp
 
             _contextQueue.Enqueue(ctx);
 
-            MutexRelease(executionContextId);
-
             _queueNotifier.Set();
         }
         catch (HttpListenerException ex)
@@ -177,14 +175,12 @@ public class StaticFileServerHttp
                 throw;
             }
         }
-        catch (Exception)
+        finally
         {
             if (Interlocked.Read(ref _isMutexOnLock) == 1)
             {
                 MutexRelease(executionContextId);
             }
-
-            throw;
         }
     }
 
